@@ -6,7 +6,7 @@ import cors from "cors";
 import fileUpload from "express-fileupload";
 import connectMongoDB from "../Backend/config/db.js";
 import path from "path";
-import {app, server} from "./utils/socketWebRTC.js"
+import {app, server} from "./utils/socket.js"
 
 //Routes Importes
 import authRoutes from "./routes/authRoute.js";

@@ -1,83 +1,45 @@
 import { useEffect, useCallback, useState } from "react";
-import peer from "../../services/peer";
 import ReactPlayer from "react-player";
+import peer from "../../services/peer";
 import { useSocket } from "../context/SocketProvider";
 
-function Stream() {
+const Stream = () => {
   const socket = useSocket();
   const [remoteSocketId, setRemoteSocketId] = useState(null);
   const [myStream, setMyStream] = useState();
   const [remoteStream, setRemoteStream] = useState();
-  const [connectionStatus, setConnectionStatus] = useState("initializing"); // Add status tracking
 
-  const handleUserJoined = useCallback(
-    ({ email, id, roomId, message }) => {
-      console.log("Match found event details:", {
-        email,
-        id,
-        roomId,
-        message,
-        currentSocketId: socket?.id,
-      });
-      setRemoteSocketId(id);
-      setConnectionStatus("connected");
-    },
-    [socket]
-  );
-
-  const handleWaiting = useCallback(({ message }) => {
-    console.log("Entered waiting state:", message);
-    setConnectionStatus("waiting");
-    setRemoteSocketId(null);
-  }, []);
-
-  const handlePartnerDisconnected = useCallback(({ message }) => {
-    console.log("Partner disconnection event:", message);
-    setConnectionStatus("waiting");
-    setRemoteSocketId(null);
-    setRemoteStream(null);
+  const handleUserJoined = useCallback(({ email, id }) => {
+    console.log(`Email ${email} joined room`);
+    setRemoteSocketId(id);
   }, []);
 
   const handleCallUser = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: true,
-      });
-      console.log("Got local media stream:", stream.id);
-      const offer = await peer.getOffer();
-      socket.emit("user:call", { to: remoteSocketId, offer });
-      setMyStream(stream);
-    } catch (err) {
-      console.error("Error getting media stream:", err);
-    }
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: true,
+    });
+    const offer = await peer.getOffer();
+    socket.emit("user:call", { to: remoteSocketId, offer });
+    setMyStream(stream);
   }, [remoteSocketId, socket]);
 
   const handleIncommingCall = useCallback(
     async ({ from, offer }) => {
-      try {
-        setRemoteSocketId(from);
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-          video: true,
-        });
-        setMyStream(stream);
-        console.log(`Incoming Call from ${from}`);
-        const ans = await peer.getAnswer(offer);
-        socket.emit("call:accepted", { to: from, ans });
-      } catch (err) {
-        console.error("Error handling incoming call:", err);
-      }
+      setRemoteSocketId(from);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: true,
+      });
+      setMyStream(stream);
+      console.log(`Incoming Call`, from, offer);
+      const ans = await peer.getAnswer(offer);
+      socket.emit("call:accepted", { to: from, ans });
     },
     [socket]
   );
 
   const sendStreams = useCallback(() => {
-    if (!myStream) {
-      console.warn("No local stream to send");
-      return;
-    }
-    console.log("Sending streams to peer");
     for (const track of myStream.getTracks()) {
       peer.peer.addTrack(track, myStream);
     }
@@ -117,18 +79,22 @@ function Stream() {
   }, []);
 
   useEffect(() => {
-    socket.on("matchFound", handleUserJoined);
-    socket.on("waiting", handleWaiting);
-    socket.on("partnerDisconnected", handlePartnerDisconnected);
+    peer.peer.addEventListener("track", async (ev) => {
+      const remoteStream = ev.streams;
+      console.log("GOT TRACKS!!");
+      setRemoteStream(remoteStream[0]);
+    });
+  }, []);
+
+  useEffect(() => {
+    socket.on("user:joined", handleUserJoined);
     socket.on("incomming:call", handleIncommingCall);
     socket.on("call:accepted", handleCallAccepted);
     socket.on("peer:nego:needed", handleNegoNeedIncomming);
     socket.on("peer:nego:final", handleNegoNeedFinal);
 
     return () => {
-      socket.off("matchFound", handleUserJoined);
-      socket.off("waiting", handleWaiting);
-      socket.off("partnerDisconnected", handlePartnerDisconnected);
+      socket.off("user:joined", handleUserJoined);
       socket.off("incomming:call", handleIncommingCall);
       socket.off("call:accepted", handleCallAccepted);
       socket.off("peer:nego:needed", handleNegoNeedIncomming);
@@ -137,8 +103,6 @@ function Stream() {
   }, [
     socket,
     handleUserJoined,
-    handleWaiting,
-    handlePartnerDisconnected,
     handleIncommingCall,
     handleCallAccepted,
     handleNegoNeedIncomming,
@@ -148,7 +112,6 @@ function Stream() {
   return (
     <div>
       <h1>Room Page</h1>
-      <h4>Status: {connectionStatus}</h4>
       <h4>{remoteSocketId ? "Connected" : "No one in room"}</h4>
       {myStream && <button onClick={sendStreams}>Send Stream</button>}
       {remoteSocketId && <button onClick={handleCallUser}>CALL</button>}
@@ -178,6 +141,6 @@ function Stream() {
       )}
     </div>
   );
-}
+};
 
 export default Stream;
